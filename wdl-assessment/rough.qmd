@@ -1,0 +1,892 @@
+---
+title: "Trends in Youth Labour Market Dynamics: Kenya & Rwanda (2015 - 2030)"
+subtitle: "Case Study | World Data Lab"
+author: "Basil Okola"
+format: 
+  revealjs:
+     self-contained: true
+     theme: [default, slides.scss]
+     include-after-body: 
+      text: |
+        <div class="footer-icons">
+          <img src="wdl.png" class="footer-left">
+          <img src="mastercard.png" class="footer-right">
+          </div>
+execute:
+  echo: false
+  warning: false
+bibliography: reference.bib
+csl: https://www.zotero.org/styles/vancouver-superscript
+editor_options: 
+  chunk_output_type: console
+---
+
+## Background
+
+* A partnership between World Data Lab & Mastercard Foundation 
+* Innovatively use data to aid creation of jobs for 30M African Youth by 2030
+* Informed by unprecedented youth bulge projected to rise to ~ 100M between 2023 - 2030 
+[@mastercardfdnAfricaYouth]
+* Inability of LMICs to create high-skilled jobs that match high supply of graduates [@ilo2024global]
+* And increasing skilled new entrants (~ 800K Kenya) into the job market with unmatched no. of new descent jobs 
+* Partnership anticipates decent jobs in Agribusiness, Green Economy, and the Digital Economy [@mastercardfdnKenya]
+
+
+```{r}
+#| label: setup
+#| include: false
+
+# load libraries
+pacman::p_load(
+  "tidyverse", "scales", "here", "showtext", "patchwork"
+)
+
+# try match WDL brand colors
+wdl_blue   <- "#012d4a"
+wdl_teal   <- "#00a7b5"
+wdl_gray   <- "#58595b"
+wdl_light  <- "#f4f7f9"
+msf_orange <- "#FF5F00"
+msf_red <- "#EB001B"
+
+# 3. Create a unified Theme
+#' apply themes consistently
+#'
+#' @returns NULL
+#' @export
+#'
+#' @examples
+themed <- function() {
+  theme_minimal(base_family = "inter") +
+    theme(
+      text = element_text(color = wdl_gray),
+      plot.title = element_text(color = wdl_blue, face = "bold", size = 18),
+      plot.subtitle = element_text(color = wdl_gray, size = 12),
+      axis.title = element_text(color = wdl_blue, face = "bold"),
+      panel.grid.major = element_line(color = "#ebebeb"),
+      panel.grid.minor = element_blank(),
+      legend.title = element_blank(),
+      legend.position = "bottom",
+      plot.background = element_rect(fill = "white", color = NA),
+      strip.background = element_rect(fill = wdl_light, color = NA),
+      strip.text = element_text(color = wdl_blue, face = "bold", size = 12),
+      panel.spacing = unit(2, "lines") # Adds space between the three charts
+    )
+}
+
+# employment share summarize function
+
+#' dynamic summarize function
+#'
+#' @param data dataframe
+#' @param group_cols grouping variables as a character vector
+#' @param summ_var target variable to summarize
+#'
+#' @returns a dataframe
+#' @export
+#'
+#' @examples
+employment_summarize <- function(
+    data = df, 
+    group_cols = c("country", "year", "sector_group")
+    ,summ_var = "population"
+    ){
+  df %>%
+  filter(status == "employed") %>%
+  group_by(across(all_of(group_cols))) %>%
+  summarise(tot = sum(!!sym(summ_var), na.rm = TRUE), .groups = "drop_last") %>%
+  mutate(emp_share = (tot / sum(tot)) * 100) %>%
+  ungroup()
+}
+
+# dynamic summarize function
+
+#' dynamic summarize function
+#'
+#' @param data dataframe
+#' @param group_cols grouping variables as a character vector
+#' @param sum_var target variable to summarize
+#'
+#' @returns a dataframe
+#' @export
+#'
+#' @examples
+summarize_funct <- function(data, group_cols, sum_var) {
+  data %>%
+    group_by(across(all_of(group_cols))) %>%
+    summarize(
+      # employment indicators
+      total_pop = sum({{ sum_var }}, na.rm = TRUE),
+      employed  = sum({{ sum_var }}[status == "employed"], na.rm = TRUE),
+      unemployed = sum({{ sum_var }}[status == "unemployed"], na.rm = TRUE),
+      inactive = sum({{ sum_var }}[status == "inactive"], na.rm = TRUE),
+      student_status = sum({{ sum_var }}[status == "student"], na.rm = TRUE),
+      
+      # NEET categories
+      neet_unemployed = sum({{ sum_var }}[status == "unemployed"], na.rm = TRUE),
+      neet_inactive   = sum({{ sum_var }}[status == "inactive"], na.rm = TRUE),
+      
+      # Total NEET 
+      neet_total = sum({{ sum_var }}[(status == "unemployed" |
+                                             status == "inactive")], na.rm = TRUE),
+      
+      # Non-NEET (Everyone else: Employed or in School)
+      non_neet        = sum({{ sum_var }}[status == "employed" |
+                                            status ==  "student"], na.rm = TRUE),
+      
+      .groups = "drop"
+    )
+}
+
+# employment indicators
+
+#' get indicator variables by calling `summarize_funct`
+#'
+#' @param data dataframe
+#' @param group_vars grouping variables as character vector
+#'
+#' @returns
+#' @export
+#'
+#' @examples
+get_indicators <- function(data, group_vars = c("country", "year")) {
+  data %>%
+    summarize_funct(group_cols = group_vars, sum_var = population) %>%
+    
+    # Calculate Rates
+    mutate(
+      # GET indicators
+      YUR  = (unemployed / (employed + unemployed)) * 100,
+      EPR  = (employed / total_pop) * 100,
+      
+      # NEET categories
+      NEET = (neet_total / total_pop) * 100,
+      NEET_unemployed = (neet_unemployed / total_pop) * 100,
+      NEET_inactive = (neet_inactive / total_pop) * 100,
+      non_NEET = (non_neet / total_pop) * 100
+    )
+}
+
+#' plot function
+#' 
+#' @param df dataframe
+#' @param x_var column name for the X-axis (default "year")
+#' @param y_var column name for the Y-axis (default "value")
+#' @param color_var column name for the grouping/color (default "country")
+#' @param facet_var column name for faceting (default "indicator")
+#' @param plot_title string for the main plot title
+#' @param ncol number of columns for the facet wrap (default 3)
+#' @param color_map named vector of colors (defaults to WDL brand colors)
+
+plot_funct <- function(df, 
+                                x_var = "year",
+                                y_var = "value",
+                                color_var = "country",
+                                facet_var = "indicator",
+                                plot_title = "Youth Labour Market Indicators (2015-2030)",
+                                ncol = 3,
+                                color_map = c("Kenya" = wdl_blue, "Rwanda" = wdl_teal)) {
+  
+  # We convert the string to a symbol to evaluate it within the dataframe
+  x_vals <- df[[x_var]]
+  min_val <- min(x_vals, na.rm = TRUE)
+  max_val <- max(x_vals, na.rm = TRUE)
+  
+  # use !!sym() for dynamic mapping
+  p <- ggplot(df, aes(x = !!sym(x_var), 
+                      y = !!sym(y_var), 
+                      color = !!sym(color_var), 
+                      group = !!sym(color_var))) +
+    
+    # lines|points
+    geom_line(linewidth = 1.5, alpha = 0.8) +
+    # geom_point(size = 3) +
+    
+    # facet
+    facet_wrap(reformulate(facet_var), ncol = ncol) +
+    
+    # custom scales
+    scale_color_manual(values = color_map) +
+    scale_y_continuous(labels = function(x) paste0(round(x, 1), "%")) +
+    
+    # continuous x-axis
+    scale_x_continuous(breaks = seq(min_val, max_val, by = 3)) +
+    
+    # labs
+    labs(
+      title = plot_title,
+      x = stringr::str_to_title(x_var),
+      y = "Value (%)",
+      color = stringr::str_to_title(color_var)
+    ) +
+    
+    # theme
+    themed() 
+  
+  return(p)
+}
+
+#' plot dual axis (bars & line) using patchwork
+#' 
+#' @param df dataframe
+#' @param x_var column for X-axis (default "year")
+#' @param y_bar_var column for the primary axis bars (e.g., "total_pop")
+#' @param y_line_var column for the secondary axis lines (e.g., "YUR")
+#' @param color_var column for the line grouping (e.g., "age_group")
+#' @param facet_var column for splitting into side-by-side plots (e.g., "country")
+#' @param y_line_max fixed ceiling for the secondary axis (set to 40)
+#' @param plot_title main title for the combined plot
+#' @param color_map named vector for brand colors
+
+plot_dual_axis <- function(df,
+                           x_var = "year",
+                           y_bar_var = "total_pop",
+                           y_line_var = "YUR",
+                           color_var = "age_group",
+                           facet_var = "country",
+                           y_line_max = 20,
+                           # Default fixed to 40
+                           plot_title = "Youth Population vs. Unemployment Rate",
+                           color_map = c("15-24" = wdl_blue, "25-35" = wdl_teal)) {
+  # get the list of unique facets
+  facet_values <- unique(df[[facet_var]])
+  
+  # build each facet's plot
+  build_plot <- function(val) {
+    facet_data <- df[df[[facet_var]] == val, ]
+    
+    # scale
+    
+    local_bar_max <- max(facet_data[[y_bar_var]], na.rm = TRUE) * 2.5
+    scale_factor <- local_bar_max / y_line_max
+    
+    ggplot(facet_data, aes(x = !!sym(x_var))) +
+      # primary axis: bars
+      geom_bar(
+        aes(y = !!sym(y_bar_var)),
+        stat = "identity",
+        fill = "#d1d3d4",
+        alpha = 0.6
+      ) +
+      # secondary axis: lines
+      geom_line(aes(
+        y = !!sym(y_line_var) * scale_factor,
+        color = !!sym(color_var)
+      ), linewidth = 1.8) +
+      
+      # define axes
+      scale_y_continuous(
+        name = stringr::str_to_title(gsub("_", " ", y_bar_var)),
+        labels = scales::comma,
+        limits = c(0, local_bar_max),
+        sec.axis = sec_axis(
+          ~ . / scale_factor,
+          name = stringr::str_to_upper(gsub("_", " ", y_line_var)),
+          labels = function(x)
+            paste0(round(x, 0), "%"),
+          breaks = seq(0, y_line_max, by = 5)
+        )
+      ) +
+      scale_x_continuous(breaks = seq(min(df[[x_var]]), max(df[[x_var]]), by = 3)) +
+      scale_color_manual(values = color_map) +
+      labs(
+        title = val,
+        x = stringr::str_to_title(x_var)
+        
+      ) +
+      themed() 
+      # theme(legend.position = "none")
+  }
+  
+  # create all plots and combine
+  plots <- lapply(facet_values, build_plot)
+  
+  combined <- wrap_plots(plots) +
+    plot_layout(guides = "collect") +
+    plot_annotation(title = plot_title) &
+    theme(legend.position = "bottom")
+  
+  return(combined)
+}
+
+#' plot metrics with annotated covid-19 years
+#'
+#' @param df dataframe
+#' @param x x-axis column
+#' @param y y-axix column
+#' @param color_col coloring column
+#' @param facet_col faceting column
+#' @param ncol number of facet columns
+#' @param title title label
+#' @param x_lab x-axis label
+#' @param y_lab y-axis label
+#' @param color_map named vector for brand colors
+#'
+#' @returns
+#' @export
+#'
+#' @examples
+plot_covid_19 <- function(df,
+                          x = "year",
+                          y = "YUR",
+                          color_col = "gender",
+                          facet_col = "country",
+                          ncol = 2,
+                          color_map = c("male" = wdl_blue, "female" = wdl_teal),
+                          title = "Youth Unemployment Trends: COVID-19 impact.",
+                          x_lab = "Year",
+                          y_lab = "Youth Unemployment Rate (YUR)") {
+  ggplot(df, aes(
+    x = !!sym(x),
+    y = !!sym(y),
+    color = !!sym(color_col),
+    group = !!sym(color_col)
+  )) +
+    # annotate covid years
+    annotate(
+      "rect",
+      xmin = 2019.5,
+      xmax = 2022.5,
+      ymin = -Inf,
+      ymax = Inf,
+      fill = "#d1d3d4",
+      alpha = 0.4
+    ) +
+    annotate(
+      "text",
+      x = 2020,
+      y = mean(df[[y]], na.rm = T),
+      label = "COVID-19",
+      angle = 90,
+      vjust = 1.5,
+      size = 3,
+      color = "gray40"
+    ) +
+    # lines
+    geom_line(linewidth = 2) +
+    facet_wrap(reformulate(facet_col), ncol = ncol) +
+    # theme
+    scale_y_continuous(
+      labels = function(x)
+        paste0(round(x, 1), "%")
+    ) +
+    scale_x_continuous(breaks = seq(2015, 2030, by = 3)) +
+    scale_color_manual(values = color_map) +
+    labs(title = title, x = x_lab, y = y_lab) +
+    themed()
+}
+
+# data
+excel_file <- list.files(here(), pattern = ".csv$", full.names = TRUE)
+
+df <- read_csv(excel_file)
+
+df %>% group_by(country, year) %>% summarize(pop = sum(population))
+
+df %>% select(where(is.character)) %>% map(unique)
+
+
+  df <- df %>%
+    mutate(
+      neet_category = case_when(
+        status == "unemployed" ~ "Unemployed NEET",
+        status == "inactive"   ~ "OLF (inactive) NEET",
+        status %in% c("employed", "student") ~ "Non-NEETs",
+        TRUE ~ "Other"
+      )
+      # ,gender = stringr::str_to_title(trimws(gender))
+    ) 
+
+indicators <- get_indicators(data = df)
+
+```
+
+
+## Employment Indicators
+
+```{r}
+#| label: fig-indicator-trends
+#| fig-cap: "Youth emplyment-to-population ratio (EPR), Youth Not in Employment, Education or Training (NEET) and Youth Unemployment Rate (YUR)."
+#| fig-height: 8
+#| fig-width: 15
+
+trends_df <- get_indicators(df, group_vars = c("country", "year")) %>%
+  select(country, year, YUR, EPR, NEET) %>%
+  pivot_longer(cols = c(YUR, EPR, NEET), 
+               names_to = "indicator", 
+               values_to = "value")
+
+plot_funct(df = trends_df)
+```
+
+## A dive into NEET
+
+```{r}
+#| label: fig-neet-composition
+#| fig-cap: OLF = Out of Labour Force.
+#| fig-cap: "Composition of Youth Population: NEET vs. Non-NEET Trends by Gender. OLF = Out of Labour Force."
+#| fig-height: 8
+#| fig-width: 15
+
+
+neet_df <- indicators %>%
+  select(country, year, NEET_inactive, NEET_unemployed, non_NEET) %>%
+  pivot_longer(cols = c(NEET_inactive, NEET_unemployed, non_NEET), 
+               names_to = "indicator", 
+               values_to = "value")
+neet_df <- neet_df %>% mutate(
+  indicator = case_when(
+    indicator == "NEET_inactive" ~ "OLF (inactive) NEET",
+    indicator == "NEET_unemployed" ~ "Unemployed NEET",
+    TRUE ~ "Non-NEETs"
+  )
+)
+
+plot_funct(df = neet_df, plot_title = "Comparing the share of NEETs & Non-NEETs")
+```
+
+
+## Population & YUR trends by age group
+
+
+```{r}
+#| label: fig-YUR-age
+#| fig-cap: "YUR by age group. YUR higher in Rwanda. New entrants experiencing higher YUR in Kenya. YUR = Youth Unemployment Rate."
+#| fig-height: 8
+#| fig-width: 15
+
+
+age_data <- get_indicators(df, group_vars = c("country", "year", "age_group"))
+plot_dual_axis(df = age_data)
+```
+
+
+## Population & YUR trends by gender
+
+```{r}
+#| label: fig-YUR-gender
+#| fig-cap: "YUR by gender. Gender gap higher in Rwanda, women having higher YUR in general."
+#| fig-height: 8
+#| fig-width: 15
+
+gender_data <- get_indicators(df, group_vars = c("country", "year", "gender"))
+plot_dual_axis(
+  df = gender_data,
+  color_var = "gender",
+  color_map = c("male" = wdl_blue, "female" = wdl_teal)
+)
+```
+
+## YUR by education
+
+```{r}
+#| label: fig-YUR-education
+#| fig-cap: "YUR by education. Not enough jobs for skilled workforce."
+#| fig-height: 8
+#| fig-width: 15
+
+
+edu_data <- get_indicators(df, group_vars = c("country", "year", "education"))
+plot_funct(
+  df = edu_data,
+  color_var = "education",
+  y_var = "YUR",
+  facet_var = "country",
+  ncol = 2,
+  plot_title = "YUR by attained level of Education.",
+  color_map = c(
+      "no" = msf_orange,
+      "primary" = msf_red,
+      "secondary"    = wdl_teal,
+      "tertiary"    = wdl_blue 
+    )
+  
+)
+```
+
+## EPR by education
+
+```{r}
+#| label: fig-EPR-education
+#| fig-cap: "EPR by education. Not enough jobs for skilled workforce"
+#| fig-height: 8
+#| fig-width: 15
+
+
+plot_funct(
+  df = edu_data,
+  color_var = "education",
+  y_var = "EPR",
+  facet_var = "country",
+  ncol = 2,
+  plot_title = "EPR by attained level of Education.",
+  color_map = c(
+      "no" = msf_orange,
+      "primary" = msf_red,
+      "secondary"    = wdl_teal,
+      "tertiary"    = wdl_blue 
+    )
+  
+)
+```
+
+
+
+## Employment share by economic sector
+
+```{r}
+#| label: fig-share-sector
+#| fig-cap: "Service sector overtook agriculture in Kenya without any meaningful industrialization"
+#| fig-height: 8
+#| fig-width: 15
+
+sector_data <- employment_summarize()
+plot_funct(
+  df = sector_data,
+  color_var = "sector_group",
+  y_var = "emp_share",
+  facet_var = "country",
+  ncol = 2,
+  plot_title = "Employment Share by Sector",
+  color_map = c(
+      "Agriculture" = msf_orange,
+      "Industry"    = wdl_teal,
+      "Services"    = wdl_blue 
+    )
+  
+)
+```
+
+
+## YUR and COVID-19 by gender
+
+```{r}
+#| label: yur-covid-demographics
+#| fig-cap: "Rwanda more hit by COVID-19 between 2020-2021 then steady recovery up to 2024."
+#| fig-height: 8
+#| fig-width: 15
+
+gender_covid <- get_indicators(df, group_vars = c("country", "year", "gender"))
+
+plot_covid_19(df = gender_covid)
+```
+
+## YUR & COVID-19 by age group
+
+```{r}
+#| label: yur-covid-age
+#| fig-height: 6
+#| fig-width: 10
+
+# 1. Calculate YUR by Age Group
+age_covid <- get_indicators(df, group_vars = c("country", "year", "age_group"))
+
+# 2. Plot
+ggplot(age_covid, aes(x = year, y = YUR, color = age_group, group = age_group)) +
+  # Shaded COVID-19 Area
+  annotate("rect", xmin = 2019.5, xmax = 2022.5, ymin = -Inf, ymax = Inf, 
+           fill = "#d1d3d4", alpha = 0.4) +
+  annotate("text", x = 2020, y = mean(age_covid$YUR, na.rm=T), 
+           label = "COVID-19", angle = 90, vjust = 1.5, size = 3, color = "gray40") +
+  # Trend Lines
+  geom_line(linewidth = 2) +
+  facet_wrap(~country) +
+  # Formatting
+  scale_y_continuous(labels = function(x) paste0(round(x, 1), "%")) +
+  scale_x_continuous(breaks = seq(2015, 2030, by = 3)) +
+  scale_color_manual(values = c("15-24" = wdl_blue, "25-35" = wdl_teal), name = "Age Group") +
+  labs(
+    title = "Youth Unemployment Trends by Age",
+    subtitle = "Analysis of volatility in early vs. mid-youth cohorts (2015-2030)",
+    x = "Year", y = "Youth Unemployment Rate (YUR)"
+  ) +
+  themed() 
+```
+
+
+## Election shocks
+
+```{r}
+#| label: yur-election-trends
+#| fig-height: 7
+#| fig-width: 12
+#| include: false
+
+election_data <- get_indicators(df, group_vars = c("country", "year"))
+
+# define election years
+elections <- data.frame(
+  country = c("Kenya", "Kenya", "Kenya", "Rwanda", "Rwanda", "Rwanda"),
+  year = c(2017, 2022, 2027, 2017, 2024, 2029)
+)
+
+# plot
+ggplot(election_data, aes(x = year, y = YUR)) +
+  # highlight election years with vertical lines
+  geom_vline(data = elections, aes(xintercept = year), 
+             color = "#e63946", linetype = "dashed", linewidth = 1) +
+  # add text labels for election years
+  geom_text(data = elections, aes(x = year, y = mean(election_data$YUR), label = "Election"), 
+            angle = 90, vjust = -0.5, size = 3.5, color = "#e63946", fontface = "italic") +
+  # YUR trend line
+  geom_line(aes(color = country), linewidth = 2) +
+  facet_wrap(~country) +
+  # theme
+  scale_y_continuous(labels = function(x) paste0(round(x, 1), "%")) +
+  scale_x_continuous(breaks = seq(2015, 2030, by = 3)) +
+  scale_color_manual(values = c("Kenya" = wdl_blue, "Rwanda" = wdl_teal)) +
+  labs(
+    title = "Youth Unemployment (YUR) vs. Election Cycles",
+    subtitle = "Dashed lines indicate Presidential/General Election years",
+    x = "Year",
+    y = "Youth Unemployment Rate (%)"
+  ) +
+  themed()
+```
+---
+
+
+## YUR & climate shocks by gender
+add ylab
+
+```{r}
+#| label: yur-climate-gender-fixed
+
+gender_data <- get_indicators(df, group_vars = c("country", "year", "gender"))
+
+# Define Climate Events
+climate_events <- data.frame(
+  country = c("Kenya", "Kenya", "Kenya", "Rwanda", "Rwanda"),
+  year = c(2017, 2022, 2024, 2017, 2023),
+  event = c("Drought", "Drought", "Floods", "Drought", "Floods")
+)
+
+ggplot(gender_data, aes(x = year, y = YUR, color = gender, group = gender)) +
+  # 1. Vertical Lines (Inherit.aes = FALSE to avoid the 'gender' error)
+  geom_vline(data = climate_events, aes(xintercept = year), 
+             color = "#e63946", linetype = "dotted", linewidth = 0.8, inherit.aes = FALSE) +
+  
+  # 2. Labels (Manually specify aesthetics)
+  geom_text(data = climate_events, 
+            aes(x = year, y = max(gender_data$YUR, na.rm = TRUE), label = event), 
+            inherit.aes = FALSE, angle = 90, vjust = -0.5, size = 3, color = "#e63946") +
+  
+  # 3. Data Lines
+  geom_line(linewidth = 2) +
+  facet_wrap(~country, scales = "free_y") +
+  scale_y_continuous(labels = function(x) paste0(round(x, 1), "%")) +
+  scale_x_continuous(breaks = seq(2015, 2030, by = 3)) +
+  scale_color_manual(values = c("male" = wdl_blue, "female" = wdl_teal)) +
+  labs(title = "YUR vs. Climate Shocks (Gender)") +
+  themed()
+```
+
+## YUR & climate shocks by age group
+add ylab
+
+```{r}
+#| label: yur-climate-age-fixed
+
+age_data <- get_indicators(df, group_vars = c("country", "year", "age_group"))
+
+ggplot(age_data, aes(x = year, y = YUR, color = age_group, group = age_group)) +
+  # Vertical Lines
+  geom_vline(data = climate_events, aes(xintercept = year), 
+             color = "#e63946", linetype = "dotted", linewidth = 0.8, inherit.aes = FALSE) +
+  
+  # Labels
+  geom_text(data = climate_events, 
+            aes(x = year, y = max(age_data$YUR, na.rm = TRUE), label = event), 
+            inherit.aes = FALSE, angle = 90, vjust = -0.5, size = 3, color = "#e63946") +
+  
+  # Data Lines
+  geom_line(linewidth = 2) +
+  facet_wrap(~country, scales = "free_y") +
+  scale_y_continuous(labels = function(x) paste0(round(x, 1), "%")) +
+  scale_x_continuous(breaks = seq(2015, 2030, by = 3)) +
+  scale_color_manual(values = c("15-24" = wdl_blue, "25-35" = wdl_teal)) +
+  labs(title = "YUR vs. Climate Shocks (Age Group)") +
+  themed()
+```
+
+## YUR & conflict susceptibility by gender
+
+```{r}
+#| label: yur-conflict-trends
+#| fig-height: 7
+#| fig-width: 12
+
+# 1. Calculate Data
+gender_conflict <- get_indicators(df, group_vars = c("country", "year", "gender")) %>%
+  mutate(gender = stringr::str_to_title(trimws(gender)))
+
+# 2. Define Conflict/Unrest Periods
+conflict_events <- data.frame(
+  country = c("Kenya", "Kenya", "Rwanda"),
+  year = c(2017, 2023.5, 2015), # 2023.5 to center the label for 23-24
+  label = c("Political Unrest", "Civil Unrest", "High Stability Period")
+)
+
+# 3. Plot
+ggplot(gender_conflict, aes(x = year, y = YUR, color = gender, group = gender)) +
+  # Add Shaded Rectangles for extended unrest periods
+  # Kenya 2017 and 2023-24
+  annotate("rect", xmin = 2017, xmax = 2018, ymin = -Inf, ymax = Inf, 
+           fill = "#e63946", alpha = 0.1) +
+  annotate("rect", xmin = 2023, xmax = 2024, ymin = -Inf, ymax = Inf, 
+           fill = "#e63946", alpha = 0.1) +
+  
+  # Conflict Markers (using inherit.aes = FALSE to avoid the gender error)
+  geom_vline(data = conflict_events %>% filter(country == "Kenya"), 
+             aes(xintercept = year), color = "#e63946", linetype = "dashed", inherit.aes = FALSE) +
+  
+  # Labels
+  geom_text(data = conflict_events, 
+            aes(x = year, y = max(gender_conflict$YUR, na.rm = TRUE) * 0.95, label = label), 
+            inherit.aes = FALSE, angle = 90, vjust = -0.5, size = 3, color = "#e63946") +
+  
+  # Trend Lines
+  geom_line(linewidth = 2) +
+  facet_wrap(~country, scales = "free_y") +
+  
+  # Formatting
+  scale_y_continuous(labels = function(x) paste0(round(x, 1), "%")) +
+  scale_x_continuous(breaks = seq(2015, 2030, by = 3)) +
+  scale_color_manual(values = c("Male" = wdl_blue, "Female" = wdl_teal)) +
+  labs(
+    title = "Youth Labor Fragility: YUR vs. Periods of Unrest",
+    subtitle = "Red zones highlight periods of political and civic instability in Kenya",
+    x = "Year", y = "Youth Unemployment Rate (%)"
+  ) +
+  themed()
+```
+
+
+## YUR & conflict susceptibility by age group
+
+```{r}
+#| label: yur-conflict-age
+#| fig-height: 7
+#| fig-width: 12
+
+# 1. Calculate Data for Age Groups
+age_conflict <- get_indicators(df, group_vars = c("country", "year", "age_group")) %>%
+  mutate(age_group = trimws(age_group))
+
+# 2. Re-use Conflict Events dataframe
+conflict_events <- data.frame(
+  country = c("Kenya", "Kenya", "Rwanda"),
+  year = c(2017, 2023.5, 2015), 
+  label = c("Political Unrest", "Civil Unrest", "High Stability Period")
+)
+
+# 3. Plot
+ggplot(age_conflict, aes(x = year, y = YUR, color = age_group, group = age_group)) +
+  # Add Shaded Rectangles for Kenya's instability periods
+  annotate("rect", xmin = 2017, xmax = 2018, ymin = -Inf, ymax = Inf, 
+           fill = "#e63946", alpha = 0.1) +
+  annotate("rect", xmin = 2023, xmax = 2024, ymin = -Inf, ymax = Inf, 
+           fill = "#e63946", alpha = 0.1) +
+  
+  # Conflict Markers
+  geom_vline(data = conflict_events %>% filter(country == "Kenya"), 
+             aes(xintercept = year), color = "#e63946", linetype = "dashed", inherit.aes = FALSE) +
+  
+  # Labels
+  geom_text(data = conflict_events, 
+            aes(x = year, y = max(age_conflict$YUR, na.rm = TRUE) * 0.95, label = label), 
+            inherit.aes = FALSE, angle = 90, vjust = -0.5, size = 3, color = "#e63946") +
+  
+  # Trend Lines
+  geom_line(linewidth = 2) +
+  facet_wrap(~country, scales = "free_y") +
+  
+  # Formatting
+  scale_y_continuous(labels = function(x) paste0(round(x, 1), "%")) +
+  scale_x_continuous(breaks = seq(2015, 2030, by = 3)) +
+  # Using consistent WDL Blue and Teal for Age Groups
+  scale_color_manual(values = c("15-24" = wdl_blue, "25-35" = wdl_teal), 
+                     name = "Age Group") +
+  labs(
+    title = "Age-Specific Vulnerability to Unrest",
+    subtitle = "Comparing YUR sensitivity between entry-level (15-24) and established (25-35) youth",
+    x = "Year", y = "Youth Unemployment Rate (%)"
+  ) +
+  themed() +
+  theme(legend.position = "bottom")
+```
+
+## understanding the projections
+
+```{r}
+#| label: reverse-engineer-table
+#| results: asis
+
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(broom)
+
+# 1. Define Theme Colors (ensure these are defined in your environment)
+wdl_blue <- "#0070C0"
+wdl_teal <- "#008080"
+
+# 2. Prepare Data and Metrics
+get_metrics <- function(data) {
+  data %>%
+    group_by(country, year) %>%
+    summarise(
+      unemployed = sum(population[status == "unemployed"], na.rm = TRUE),
+      employed   = sum(population[status == "employed"], na.rm = TRUE),
+      total_pop  = sum(population, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(YUR = (unemployed / (employed + unemployed)) * 100)
+}
+
+# Assuming 'df' is your loaded kenya_rwanda_data_v1.csv
+metrics_df <- get_metrics(df)
+
+# 3. Model Analysis
+analyze_models <- function(df_subset, period_name) {
+  df_subset %>%
+    group_by(country) %>%
+    do({
+      m_yur <- lm(YUR ~ year, data = .)
+      m_pop <- lm(total_pop ~ year, data = .)
+      data.frame(
+        Period = period_name,
+        YUR_R2 = summary(m_yur)$r.squared,
+        YUR_Slope = coef(m_yur)[["year"]],
+        Pop_R2 = summary(m_pop)$r.squared,
+        Annual_Growth = coef(m_pop)[["year"]]
+      )
+    }) %>%
+    ungroup()
+}
+
+results <- bind_rows(
+  analyze_models(metrics_df %>% filter(year <= 2025), "Historical (2015-25)"),
+  analyze_models(metrics_df %>% filter(year >= 2026), "Projection (2026-30)")
+)
+
+# 4. Correct Rendering with kable and cell_spec
+results %>%
+  mutate(
+    YUR_R2 = cell_spec(round(YUR_R2, 4), 
+                       color = ifelse(YUR_R2 > 0.99, wdl_blue, "black"), 
+                       bold = (YUR_R2 > 0.99)),
+    Pop_R2 = cell_spec(round(Pop_R2, 4), 
+                       color = ifelse(Pop_R2 > 0.99, wdl_teal, "black"), 
+                       bold = (Pop_R2 > 0.99)),
+    YUR_Slope = round(YUR_Slope, 3),
+    Annual_Growth = format(round(Annual_Growth), big.mark = ",")
+  ) %>%
+  select(Country = country, Period, `YUR R²` = YUR_R2, `YUR Annual Δ` = YUR_Slope, `Pop R²` = Pop_R2, `Annual Pop Growth` = Annual_Growth) %>%
+  kable(escape = FALSE, align = "llcccc", caption = "Statistical Fingerprint: Historical vs. Projection") %>%
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = F) %>%
+  row_spec(0, background = wdl_blue, color = "white") %>%
+  column_spec(1, bold = TRUE)
+```
+

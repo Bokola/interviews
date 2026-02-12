@@ -1,0 +1,154 @@
+/*-- scss:defaults --*/
+
+// WDL Official Branding
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css?family=Source+Code+Pro&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Gochi+Hand&display=swap');
+
+// Font Assignments
+$font-family-sans-serif: "Inter", sans-serif;
+$font-family-monospace: "Source Code Pro", monospace;
+
+// Brand Colors (Sourced from WDL website)
+$wdl-blue:       #012d4a; // Official Midnight Blue
+$wdl-teal:       #00a7b5; // Official Action Teal
+$wdl-off-white:  #f4f7f9; // Background Gray-White
+$wdl-gray:       #58595b; // Text Gray
+
+// Revealjs Variable Mapping
+$presentation-heading-color: $wdl-blue;
+$link-color:                 $wdl-teal;
+$code-color:                 $wdl-teal;
+$selection-bg:               lighten($wdl-teal, 30%);
+
+// Sizing & Spacing
+$code-block-font-size: 0.7em;
+$presentation-h2-font-size: 1.4em !default;
+$presentation-font-size-root: 36px !default;
+
+/*-- scss:rules --*/
+
+// Container for the icons
+.footer-icons {
+  position: fixed;
+  bottom: 25px;
+  left: 0;
+  right: 0;
+  width: 100vw;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  z-index: 999;
+
+  padding-left: 50px;
+  padding-right: 240px;
+}
+
+// Global base for both
+.footer-left, .footer-right {
+  object-fit: contain;
+}
+
+// Left icon: Zoomed in by increasing the scale
+.footer-left {
+  height: 95px;      // Increased from 80px to zoom in
+  width: 210px;      // Increased from 180px to provide more room
+}
+
+// Right icon: Kept exactly as it was
+.footer-right {
+  height: 80px;
+  width: 180px;
+  object-position: center;
+}
+
+.reveal .slides {
+  margin-bottom: 100px;
+}
+
+.reveal .footer {
+  display: none !important;
+}
+
+// Header Styling (matching website accent)
+.reveal h2 {
+  border-bottom: 2px solid $wdl-teal;
+  padding-bottom: 10px;
+  text-transform: none; // WDL uses natural casing
+}
+
+details > summary {
+  font-size: 0.75em;
+}
+
+// Title Slide - Centered & Brand Compliant
+#title-slide {
+  .title {
+    text-align: center;
+    color: $wdl-blue;
+    font-weight: 700;
+  }
+  .subtitle {
+    color: $wdl-gray;
+    font-weight: 600;
+    text-align: center;
+  }
+  .author, .institute {
+    text-align: center;
+    color: $wdl-gray;
+  }
+  .institute {
+    padding-bottom: 100px;
+  }
+}
+
+// Custom Insight Blocks (Updated Task block)
+.reveal .slide .task {
+  padding: 15px;
+  margin: 10px 0;
+  border-left: solid 8px $wdl-teal; // Changed from yellow to brand teal
+  background-color: rgba(0, 167, 181, 0.1); // Light teal tint
+  border-radius: 4px;
+}
+
+// Helper Classes
+.small { font-size: 0.75em; }
+.smallest { font-size: 0.5em; }
+.large { font-size: 1.5em; }
+.medium { font-size: 0.9em; }
+.center-align { text-align: center; }
+
+.reveal .hand {
+  font-family: 'Gochi Hand', cursive;
+  font-size: 1.2em;
+}
+
+// Formatting Fixes
+.reveal pre code {
+  width: 100%; // Better responsiveness than hardcoded 1200px
+}
+
+.reveal .quarto-title-block .quarto-title-authors .quarto-title-author {
+  background-color: transparent;
+}
+
+.reveal .footer a {
+  color: $wdl-teal;
+  background-color: transparent;
+}
+
+// Target Figure Captions specifically
+.reveal .slides section .caption,
+.reveal .slides section figcaption {
+  font-size: 0.6em;             // Adjust this value as needed
+  color: $wdl-gray;            // Optional: keeps it consistent with your brand gray
+  margin-top: 0.5em;           // Optional: adds a bit of space from the image
+  line-height: 1.2;
+}
+
+// If you are using cross-references (e.g., @fig-label),
+// Quarto might wrap them in a specific div
+.reveal .slides section .figure-caption {
+  font-size: 0.6em;
+}
