@@ -594,6 +594,21 @@ plot_dual_axis(df = age_data)
 ```
 
 
+
+## YUR and COVID-19 by gender
+
+```{r}
+#| label: fig-yur-covid-demographics
+#| fig-cap: "YUR by gender. Rwanda more hit by COVID-19 between 2020-2021 then steady recovery up to 2024."
+#| fig-height: 8
+#| fig-width: 15
+
+gender_covid <- get_indicators(df, group_vars = c("country", "year", "gender"))
+
+plot_covid_19(df = gender_covid)
+```
+
+
 <!-- ## Population & YUR trends by gender -->
 
 ```{r}
@@ -741,20 +756,6 @@ plot_funct(
     )
   
 )
-```
-
-
-## YUR and COVID-19 by gender
-
-```{r}
-#| label: fig-yur-covid-demographics
-#| fig-cap: "YUR by gender. Rwanda more hit by COVID-19 between 2020-2021 then steady recovery up to 2024."
-#| fig-height: 8
-#| fig-width: 15
-
-gender_covid <- get_indicators(df, group_vars = c("country", "year", "gender"))
-
-plot_covid_19(df = gender_covid)
 ```
 
 <!-- ## YUR & COVID-19 by age group -->
