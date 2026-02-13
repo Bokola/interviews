@@ -6,6 +6,9 @@ format:
   revealjs:
      self-contained: true
      theme: [default, slides.scss]
+     slide-number: true
+     title-slide-attributes:
+        data-state: "no-slide-number"
      include-after-body: 
       text: |
         <div class="footer-icons">
@@ -179,49 +182,70 @@ get_indicators <- function(data, group_vars = c("country", "year")) {
 #' @param color_map named vector of colors (defaults to WDL brand colors)
 
 plot_funct <- function(df, 
-                                x_var = "year",
-                                y_var = "value",
-                                color_var = "country",
-                                facet_var = "indicator",
-                                plot_title = "Youth Labour Market Indicators (2015-2030)",
-                                ncol = 3,
-                                color_map = c("Kenya" = wdl_blue, "Rwanda" = wdl_teal)) {
+                       x_var = "year",
+                       y_var = "value",
+                       color_var = "country",
+                       facet_var = "indicator",
+                       plot_title = "Youth Labour Market Indicators (2015-2030)",
+                       ncol = 3,
+                       color_map = c("Kenya" = wdl_blue, "Rwanda" = wdl_teal)) {
   
-  # We convert the string to a symbol to evaluate it within the dataframe
+  # 1. Identify global max x for edge detection
   x_vals <- df[[x_var]]
   min_val <- min(x_vals, na.rm = TRUE)
   max_val <- max(x_vals, na.rm = TRUE)
   
-  # use !!sym() for dynamic mapping
+  # 2. Calculate the max difference per facet
+  diff_data <- df %>%
+    group_by(!!sym(facet_var), !!sym(x_var)) %>%
+    summarise(
+      min_y = min(!!sym(y_var), na.rm = TRUE),
+      max_y = max(!!sym(y_var), na.rm = TRUE),
+      diff = max_y - min_y,
+      .groups = "drop"
+    ) %>%
+    group_by(!!sym(facet_var)) %>%
+    filter(diff == max(diff)) %>%
+    slice(1) %>%
+    mutate(
+      mid_y = (min_y + max_y) / 2,
+      # Adjust horizontal alignment if the point is at the very end
+      is_end = !!sym(x_var) == max_val,
+      h_adj = if_else(is_end, 1.1, -0.1) 
+    )
+  
   p <- ggplot(df, aes(x = !!sym(x_var), 
                       y = !!sym(y_var), 
                       color = !!sym(color_var), 
                       group = !!sym(color_var))) +
     
-    # lines|points
+    # The vertical range line
+    geom_segment(data = diff_data,
+                 aes(x = !!sym(x_var), xend = !!sym(x_var), 
+                     y = min_y, yend = max_y),
+                 inherit.aes = FALSE,
+                 linetype = "dashed", color = "grey40", linewidth = 0.6) +
+    
+    # The Label (Value only)
+    geom_text(data = diff_data,
+              aes(x = !!sym(x_var), y = mid_y, 
+                  label = paste0(round(diff, 1), "%"),
+                  hjust = h_adj),
+              inherit.aes = FALSE,
+              size = 6, fontface = "bold", color = "grey20") +
+    
     geom_line(linewidth = 1.5, alpha = 0.8) +
-    # geom_smooth(method = "loess") +
-    # geom_point(size = 3) +
-    
-    # facet
     facet_wrap(reformulate(facet_var), ncol = ncol) +
-    
-    # custom scales
     scale_color_manual(values = color_map) +
     scale_y_continuous(labels = function(x) paste0(round(x, 1), "%")) +
-    
-    # continuous x-axis
     scale_x_continuous(breaks = seq(min_val, max_val, by = 3)) +
     
-    # labs
     labs(
       title = plot_title,
       x = stringr::str_to_title(x_var),
       y = "Value (%)",
       color = stringr::str_to_title(color_var)
     ) +
-    
-    # theme
     themed() 
   
   return(p)
@@ -248,35 +272,63 @@ plot_dual_axis <- function(df,
                            y_line_max = 20,
                            plot_title = "Youth Population vs. Unemployment Rate",
                            color_map = c("15-24" = wdl_blue, "25-35" = wdl_teal)) {
+  
   facet_values <- unique(df[[facet_var]])
+  max_x_val <- max(df[[x_var]], na.rm = TRUE)
   
   build_plot <- function(val) {
     facet_data <- df[df[[facet_var]] == val, ]
     
+    # calculate scale factor
     local_bar_max <- max(facet_data[[y_bar_var]], na.rm = TRUE) * 2.5
     scale_factor <- local_bar_max / y_line_max
     
+    # calculate max difference for lines
+    diff_data <- facet_data %>%
+      group_by(!!sym(x_var)) %>%
+      summarise(
+        min_y = min(!!sym(y_line_var), na.rm = TRUE),
+        max_y = max(!!sym(y_line_var), na.rm = TRUE),
+        diff = max_y - min_y,
+        .groups = "drop"
+      ) %>%
+      filter(diff == max(diff)) %>%
+      slice(1) %>%
+      mutate(
+        mid_y = (min_y + max_y) / 2,
+        is_end = !!sym(x_var) == max_x_val,
+        h_adj = if_else(is_end, 1.1, -0.1)
+      )
+    
     ggplot(facet_data, aes(x = !!sym(x_var))) +
+      # bars (primary axis)
       geom_bar(
         aes(y = !!sym(y_bar_var)),
         stat = "identity",
-        fill = "#d1d3d4",
+        fill = wdl_gray,
         alpha = 0.6
       ) +
+      
+      # max diff range line (scaled)
+      geom_segment(data = diff_data,
+                   aes(x = !!sym(x_var), xend = !!sym(x_var), 
+                       y = min_y * scale_factor, yend = max_y * scale_factor),
+                   inherit.aes = FALSE,
+                   linetype = "dashed", color = "grey40", linewidth = 0.6) +
+      
+      # max diff label (scaled)
+      geom_text(data = diff_data,
+                aes(x = !!sym(x_var), y = mid_y * scale_factor, 
+                    label = paste0(round(diff, 1), "%"),
+                    hjust = h_adj),
+                inherit.aes = FALSE,
+                size = 6, fontface = "bold", color = msf_orange) +
+      
+      # lines (secondary axis)
       geom_line(aes(
         y = !!sym(y_line_var) * scale_factor,
         color = !!sym(color_var)
       ), linewidth = 1.8) +
-      # geom_smooth(
-      #   aes(
-      #     y = !!sym(y_line_var) * scale_factor, 
-      #     color = !!sym(color_var),
-      #     fill = !!sym(color_var)
-      #   ),
-      #   method = "loess",
-      #   linewidth = 1.8,
-      #   span = 0.75
-      # ) +
       
       scale_y_continuous(
         name = stringr::str_to_title(gsub("_", " ", y_bar_var)),
@@ -285,8 +337,7 @@ plot_dual_axis <- function(df,
         sec.axis = sec_axis(
           ~ . / scale_factor,
           name = stringr::str_to_upper(gsub("_", " ", y_line_var)),
-          labels = function(x)
-            paste0(round(x, 0), "%"),
+          labels = function(x) paste0(round(x, 0), "%"),
           breaks = seq(0, y_line_max, by = 5)
         )
       ) +
@@ -304,7 +355,7 @@ plot_dual_axis <- function(df,
   combined <- wrap_plots(plots) +
     plot_layout(guides = "collect") +
     plot_annotation(title = plot_title) &
-    themed() & # Apply your brand theme to the whole patchwork
+    themed() & # apply brand theme to the whole patchwork
     theme(legend.position = "bottom")
   
   return(combined)
@@ -338,6 +389,27 @@ plot_covid_19 <- function(df,
                           title = "Youth Unemployment Trends: COVID-19 impact.",
                           x_lab = "Year",
                           y_lab = "Youth Unemployment Rate (YUR)") {
+  
+  # 1. Edge detection and Max Diff calculation
+  max_x <- max(df[[x]], na.rm = TRUE)
+  
+  diff_data <- df %>%
+    group_by(!!sym(facet_col), !!sym(x)) %>%
+    summarise(
+      min_y = min(!!sym(y), na.rm = TRUE),
+      max_y = max(!!sym(y), na.rm = TRUE),
+      diff = max_y - min_y,
+      .groups = "drop"
+    ) %>%
+    group_by(!!sym(facet_col)) %>%
+    filter(diff == max(diff)) %>%
+    slice(1) %>%
+    mutate(
+      mid_y = (min_y + max_y) / 2,
+      is_end = !!sym(x) == max_x,
+      h_adj = if_else(is_end, 1.1, -0.1)
+    )
+  
   ggplot(df, aes(
     x = !!sym(x),
     y = !!sym(y),
@@ -351,33 +423,48 @@ plot_covid_19 <- function(df,
       xmax = 2022.5,
       ymin = -Inf,
       ymax = Inf,
-      fill = "#d1d3d4",
+      fill = wdl_gray,
       alpha = 0.4
     ) +
     annotate(
       "text",
-      x = 2020,
+      x = 2021, # centered in the 2019.5-2022.5 block
       y = mean(df[[y]], na.rm = T),
       label = "COVID-19",
       angle = 90,
       vjust = 1.5,
-      size = 3,
-      color = "gray40"
+      size = 6,
+      color = "black"
     ) +
+    
+    # max difference segment
+    geom_segment(data = diff_data,
+                 aes(x = !!sym(x), xend = !!sym(x), 
+                     y = min_y, yend = max_y),
+                 inherit.aes = FALSE,
+                 linetype = "dashed", color = "grey40", linewidth = 0.6) +
+    
+    # max difference label
+    geom_text(data = diff_data,
+              aes(x = !!sym(x), y = mid_y, 
+                  label = paste0(round(diff, 1), "%"),
+                  hjust = h_adj),
+              inherit.aes = FALSE,
+              size = 6, fontface = "bold", color = "grey20") +
+    
     # lines
     geom_line(linewidth = 2) +
-    # geom_smooth(method = "loess") +
     facet_wrap(reformulate(facet_col), ncol = ncol) +
-    # theme
-    scale_y_continuous(
-      labels = function(x)
-        paste0(round(x, 1), "%")
-    ) +
+    
+    # scales
+    scale_y_continuous(labels = function(x) paste0(round(x, 1), "%")) +
     scale_x_continuous(breaks = seq(2015, 2030, by = 3)) +
     scale_color_manual(values = color_map) +
+    
     labs(title = title, x = x_lab, y = y_lab) +
     themed()
 }
+
 
 # data
 excel_file <- list.files(here(), pattern = ".csv$", full.names = TRUE)
@@ -412,6 +499,9 @@ ind_gender_young <- get_indicators(
   group_vars = c("country", "year", "gender")
 )
 
+edu_data <- get_indicators(df, group_vars = c("country", "year", "education"))
+edu_data2 <- get_indicators(df, group_vars = c("country", "year", "education_2"))
+
 ```
 
 
@@ -419,7 +509,7 @@ ind_gender_young <- get_indicators(
 
 ```{r}
 #| label: fig-indicator-trends
-#| fig-cap: "Youth emplyment-to-population ratio (EPR), Youth Not in Employment, Education or Training (NEET) and Youth Unemployment Rate (YUR)."
+#| fig-cap: "Youth emplyment-to-population ratio (EPR), Youth Not in Employment, Education or Training (NEET) and Youth Unemployment Rate (YUR). EPR on a downward trend in both countries but higher in Kenya. NEET on an upward trend, higher rates in Rwanda. YUR flattening."
 #| fig-height: 8
 #| fig-width: 15
 
@@ -436,7 +526,7 @@ plot_funct(df = trends_df)
 
 ```{r}
 #| label: fig-neet-composition
-#| fig-cap: "Composition of Youth Population: NEET vs. Non-NEET Trends by Gender. OLF = Out of Labour Force."
+#| fig-cap: "Composition of Youth Population: NEET vs. Non-NEET Trends by Gender. This figure confirms our previous observation that employment rates are generally higher in Kenya. It emphasizes that youth that are unemployed are also not in education or training institutions. OLF = Out of Labour Force."
 #| fig-height: 8
 #| fig-width: 15
 
@@ -461,7 +551,7 @@ plot_funct(df = neet_df, plot_title = "Comparing the share of NEETs & Non-NEETs"
 
 ```{r}
 #| label: fig-neet-gender
-#| fig-cap: "NEET trends by gender. Top panel is all the age groups, bottom panel is for the younger youth (age group 15-24).For the younger youth, gender gap is higher in Kenya indicating young women are facing barriers to enter training/job market."
+#| fig-cap: "NEET trends by gender. Top panel is all the age groups, bottom panel is for the younger youth (age group 15-24).For the younger youth, gender gap is marginally higher in Kenya (up to 9.6% in 2022) while the gap was generally higher in Rwanda (up to 13.6% in 2015) for all age groups, Rwanda having better progress closing gender gap especially for new entrants."
 #| fig-height: 8
 #| fig-width: 15
 p1 <- plot_funct(
@@ -494,7 +584,7 @@ p1/p2
 
 ```{r}
 #| label: fig-YUR-age
-#| fig-cap: "YUR by age group. YUR higher in Rwanda. New entrants experiencing higher YUR in Kenya. YUR = Youth Unemployment Rate."
+#| fig-cap: "YUR by age group. While YUR higher in Rwanda, new entrants experiencing higher YUR in Kenya up to a 10% point difference in 2020. YUR = Youth Unemployment Rate."
 #| fig-height: 8
 #| fig-width: 15
 
@@ -531,8 +621,7 @@ plot_dual_axis(
 #| include: false
 
 
-edu_data <- get_indicators(df, group_vars = c("country", "year", "education"))
-edu_data2 <- get_indicators(df, group_vars = c("country", "year", "education_2"))
+
 
 plot_funct(
   df = edu_data,
@@ -604,11 +693,11 @@ plot_funct(
 )
 ```
 
-## EPR by education-2
+## EPR by education
 
 ```{r}
 #| label: fig-EPR-education-2
-#| fig-cap: "EPR by education. Not enough jobs for skilled workforce. Available jobs favour low skilled workers in Kenya from 2025. While skilled workers are still more employable in Rwanda, observed trend in Kenya is catching up. "
+#| fig-cap: "EPR by education. Not enough jobs for skilled workforce. Available jobs favour low skilled workers in Kenya from 2025. While skilled workers are still more employable in Rwanda, observed trend in Kenya is catching up. In both countries, having secondary education is associated with poor employability if you do not get to tertiary level. "
 #| fig-height: 8
 #| fig-width: 15
 
